@@ -22,7 +22,7 @@ os.makedirs(output_folder, exist_ok=True)
 
 # Output file uses audio filename as base
 base_name = os.path.splitext(os.path.basename(audio_file))[0]
-output_file = os.path.join(output_folder, f"{base_name}_video.mp4")
+output_file = os.path.join(output_folder, f"{base_name}.mp4")
 
 fps = 30
 width, height = 720, 720  # square video

@@ -9,6 +9,7 @@ import string
 import sys
 from urllib.parse import unquote
 import librosa
+from collections import Counter
 
 # -------------------------
 # Logging setup
@@ -24,10 +25,6 @@ load_dotenv()
 # -------------------------
 # Helpers
 # -------------------------
-def slow_audio(wav, rate=0.9):
-    wav = np.asarray(wav, dtype=np.float32)
-    return librosa.effects.time_stretch(wav, rate=rate)
-
 def normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
@@ -38,9 +35,6 @@ def sanitize_filename(name: str) -> str:
     valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
     return "".join(c for c in name if c in valid_chars).replace(" ", "_")
 
-# -------------------------
-# Split text keeping punctuation
-# -------------------------
 def split_with_punctuation(text: str):
     """
     Returns list of (text, pause_seconds)
@@ -66,6 +60,35 @@ def split_with_punctuation(text: str):
     return result
 
 # -------------------------
+# Substance frequency detection
+# -------------------------
+SUBSTANCES = [
+    "LSD",
+    "DMT",
+    "Salvia",
+    "MDMA",
+    "Cannabis",
+    "Heroin",
+]
+
+def detect_primary_substance(text: str) -> str:
+    text_lower = text.lower()
+    counts = Counter()
+
+    for substance in SUBSTANCES:
+        pattern = rf"\b{substance.lower()}\b"
+        matches = re.findall(pattern, text_lower)
+        if matches:
+            counts[substance] += len(matches)
+
+    if not counts:
+        return "Unknown"
+
+    primary, _ = counts.most_common(1)[0]
+    logger.info("Substance frequency: %s", dict(counts))
+    return primary
+
+# -------------------------
 # Check for URL argument
 # -------------------------
 experience_url = None
@@ -85,7 +108,8 @@ if not experience_url:
             "https://www.erowid.org/chemicals/lsd/lsd.shtml",
             "https://www.erowid.org/plants/salvia/salvia.shtml",
             "https://www.erowid.org/plants/cannabis/cannabis.shtml",
-            "https://www.erowid.org/chemicals/mdma/mdma.shtml"
+            "https://www.erowid.org/chemicals/mdma/mdma.shtml",
+            "https://www.erowid.org/chemicals/heroin/heroin.shtml",
         ]
     }
     experience = requests.post(url, json=substances).json()
@@ -107,17 +131,25 @@ clean_experience = {
     "gender": data["metadata"].get("gender", "Unknown"),
     "age": data["metadata"].get("age", "Unknown"),
     "content": data["content"],
-    "doses": data["doses"],
+    "doses": data.get("doses", []),
 }
 
 logger.info(
     "Loaded experience: '%s' by %s",
     clean_experience["title"],
-    clean_experience["username"]
+    clean_experience["username"],
 )
 
-substances_used = sorted({d["substance"] for d in clean_experience["doses"]})
-substances_text = ", ".join(substances_used)
+# -------------------------
+# Detect primary substance (with fallback)
+# -------------------------
+primary_substance = detect_primary_substance(clean_experience["content"])
+
+if primary_substance == "Unknown" and clean_experience["doses"]:
+    primary_substance = clean_experience["doses"][0]["substance"]
+    logger.info("Frequency detection failed, fallback to dose metadata")
+
+logger.info("Primary substance detected: %s", primary_substance)
 
 # -------------------------
 # Build narration script
@@ -136,26 +168,17 @@ Listener discretion is advised.
 
 {clean_experience['title']}.
 
+A {primary_substance} Trip Report.
+
 This experience was submitted under the username
 {clean_experience['username']}.
 
-Reported age: {clean_experience['age']}.
+Reported age: {clean_experience['age']},
 Reported gender: {clean_experience['gender']}.
-
-The substances involved in this experience include:
-{substances_text}.
-
-What follows is the original experience,
-with minimal edits for clarity.
 
 {clean_experience['content']}
 
-Experiences like this can be deeply personal and unpredictable,
-and are influenced by mindset, environment,
-and many other factors.
-
-If you choose to explore altered states of consciousness,
-education, preparation, and harm reduction are essential.
+I Hope you found this experience report informative and enjoyable.
 
 Thank you for listening.
 """
@@ -177,7 +200,7 @@ speaker = "p232"
 sr = tts.synthesizer.output_sample_rate
 
 # -------------------------
-# Generate audio with pauses
+# Generate audio
 # -------------------------
 audio_parts = []
 
@@ -186,23 +209,6 @@ for text, pause in segments:
     wav = tts.tts(text=text, speaker=speaker)
     audio_parts.append(wav)
     audio_parts.append(silence(pause, sr))
-
-# -------------------------
-# Safe dramatic pause after title
-# -------------------------
-title_norm = clean_experience["title"].strip().lower()
-
-insert_index = None
-for i, (text, pause) in enumerate(segments):
-    if text.strip().lower().startswith(title_norm):
-        insert_index = i + 1
-        break
-
-if insert_index is not None:
-    audio_parts.insert(insert_index * 2, silence(2.0, sr))
-    logger.info("Inserted dramatic pause after title")
-else:
-    logger.warning("Title segment not found; skipping dramatic pause")
 
 final_audio = np.concatenate(audio_parts)
 
@@ -213,6 +219,7 @@ audio_filename = sanitize_filename(clean_experience["title"]) + ".wav"
 sf.write(audio_filename, final_audio, sr)
 logger.info("Saved audio as %s", audio_filename)
 
-primary_substance = substances_used[0] if substances_used else "Unknown"
-
+# -------------------------
+# Output for pipeline
+# -------------------------
 print(f"{audio_filename}|{primary_substance}")

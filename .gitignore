@@ -1,4 +1,4 @@
 *.wav
 *.json
-* mp4
+*.mp4
 .env

@@ -95,9 +95,11 @@ if not experience_url:
 # Fetch experience details
 # -------------------------
 logger.info("Fetching full experience details")
-url = "https://lysergic.kaizenklass.xyz/api/v1/erowid/experience"
-payload = {"url": experience_url}
-data = requests.post(url, json=payload).json()["data"]
+resp = requests.post(
+    "https://lysergic.kaizenklass.xyz/api/v1/erowid/experience",
+    json={"url": experience_url}
+)
+data = resp.json()["data"]
 
 clean_experience = {
     "title": data["title"],
@@ -108,8 +110,11 @@ clean_experience = {
     "doses": data["doses"],
 }
 
-logger.info("Loaded experience: '%s' by %s",
-            clean_experience["title"], clean_experience["username"])
+logger.info(
+    "Loaded experience: '%s' by %s",
+    clean_experience["title"],
+    clean_experience["username"]
+)
 
 substances_used = sorted({d["substance"] for d in clean_experience["doses"]})
 substances_text = ", ".join(substances_used)
@@ -182,11 +187,22 @@ for text, pause in segments:
     audio_parts.append(wav)
     audio_parts.append(silence(pause, sr))
 
-# Extra dramatic pause after title
-audio_parts.insert(
-    segments.index((f"{clean_experience['title']}.", 1.0)) + 1,
-    silence(2.0, sr)
-)
+# -------------------------
+# Safe dramatic pause after title
+# -------------------------
+title_norm = clean_experience["title"].strip().lower()
+
+insert_index = None
+for i, (text, pause) in enumerate(segments):
+    if text.strip().lower().startswith(title_norm):
+        insert_index = i + 1
+        break
+
+if insert_index is not None:
+    audio_parts.insert(insert_index * 2, silence(2.0, sr))
+    logger.info("Inserted dramatic pause after title")
+else:
+    logger.warning("Title segment not found; skipping dramatic pause")
 
 final_audio = np.concatenate(audio_parts)
 

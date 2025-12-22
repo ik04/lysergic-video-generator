@@ -33,6 +33,10 @@ random_clip_index = random.randint(1, 5)
 music_file = f"music/{random_music_index}.mp3"
 clip_file = f"clips/{random_clip_index}.mp4"
 
+# Absolute font path + dir (CRITICAL)
+font_path = os.path.abspath("fonts/PressStart2P-Regular.ttf")
+fonts_dir = os.path.dirname(font_path)
+
 output_folder = "output"
 os.makedirs(output_folder, exist_ok=True)
 
@@ -52,24 +56,19 @@ def clean_srt(path: str):
     for line in lines:
         stripped = line.strip()
 
-        # Keep indices
         if stripped.isdigit():
             cleaned.append(line)
             continue
 
-        # Keep timestamps
         if "-->" in line:
             cleaned.append(line)
             continue
 
-        # Preserve blank lines
         if not stripped:
             cleaned.append("\n")
             continue
 
         text = stripped
-
-        # Fix spacing around punctuation only
         text = re.sub(r"\s+([,.!?])", r"\1", text)
         text = re.sub(r"([,.!?])([A-Za-z])", r"\1 \2", text)
         text = re.sub(r"\s+", " ", text)
@@ -123,18 +122,32 @@ tts_clip.close()
 music_clip.close()
 
 # -------------------------
-# Burn subtitles with FFmpeg
+# Burn subtitles with FFmpeg (Press Start 2P)
 # -------------------------
 if os.path.exists(subtitle_file):
     clean_srt(subtitle_file)
 
-    logger.info("Burning subtitles from %s", subtitle_file)
+    logger.info("Burning subtitles using Press Start 2P")
+
+    subtitle_filter = (
+        f"subtitles='{subtitle_file}':"
+        f"fontsdir='{fonts_dir}':"
+        f"force_style="
+        f"'FontName=Press Start 2P,"
+        f"FontSize=12,"
+        f"PrimaryColour=&He042e5&,"
+        f"OutlineColour=&HFFDF4A&,"
+        f"Outline=0,"
+        f"Shadow=0,"
+        f"Alignment=2'"
+    )
+
 
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
         "-i", temp_video,
-        "-vf", f"subtitles={subtitle_file}",
+        "-vf", subtitle_filter,
         "-c:a", "copy",
         output_file,
     ]
@@ -157,5 +170,4 @@ if os.path.exists(tts_audio_file):
     logger.info("Removed temporary audio file: %s", tts_audio_file)
 
 logger.info("Final video ready: %s", output_file)
-
 print(output_file)

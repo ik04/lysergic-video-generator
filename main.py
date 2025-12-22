@@ -50,10 +50,17 @@ except subprocess.CalledProcessError:
     logger.error("%s failed!", audio_script)
     sys.exit(1)
 
-output = result.stdout.strip().splitlines()[-1]
-audio_file, primary_substance = output.split("|", 1)
+# Parse audio.py output (audio.wav | subtitle.srt | primary_substance)
+output_line = result.stdout.strip().splitlines()[-1]
+parts = [p.strip() for p in output_line.split("|")]
 
+if len(parts) != 3:
+    logger.error("Unexpected audio.py output: %s", output_line)
+    sys.exit(1)
+
+audio_file, subtitle_file, primary_substance = parts
 logger.info("Generated audio: %s", audio_file)
+logger.info("Generated subtitles: %s", subtitle_file)
 logger.info("Primary substance: %s", primary_substance)
 
 # -------------------------

@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -45,23 +46,39 @@ if experience_url:
 # Run audio script
 # -------------------------
 try:
-    result = subprocess.run(cmd, check=True, text=True, stdout=subprocess.PIPE)
+    result = subprocess.run(
+        cmd,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE
+    )
 except subprocess.CalledProcessError:
     logger.error("%s failed!", audio_script)
     sys.exit(1)
 
-# Parse audio.py output (audio.wav | subtitle.srt | primary_substance)
+# -------------------------
+# Parse audio.py output
+# Expected:
+# audio.wav | subtitle.srt | primary_substance | experience_url
+# -------------------------
 output_line = result.stdout.strip().splitlines()[-1]
 parts = [p.strip() for p in output_line.split("|")]
 
-if len(parts) != 3:
+if len(parts) not in (3, 4):
     logger.error("Unexpected audio.py output: %s", output_line)
     sys.exit(1)
 
-audio_file, subtitle_file, primary_substance = parts
+audio_file = parts[0]
+subtitle_file = parts[1]
+primary_substance = parts[2]
+frontend_experience_url = parts[3] if len(parts) == 4 else None
+
 logger.info("Generated audio: %s", audio_file)
 logger.info("Generated subtitles: %s", subtitle_file)
 logger.info("Primary substance: %s", primary_substance)
+
+if frontend_experience_url:
+    logger.info("Experience URL: %s", frontend_experience_url)
 
 # -------------------------
 # Run video.py
@@ -94,10 +111,19 @@ if not auto_upload:
         sys.exit(0)
 
 logger.info("Uploading to YouTube...")
-subprocess.run(
-    ["python", YT_SCRIPT, video_file, PLAYLIST_ID, primary_substance],
-    check=True
-)
+
+yt_cmd = [
+    "python",
+    YT_SCRIPT,
+    video_file,
+    PLAYLIST_ID,
+    primary_substance,
+]
+
+if frontend_experience_url:
+    yt_cmd.append(frontend_experience_url)
+
+subprocess.run(yt_cmd, check=True)
 
 logger.info("YouTube upload completed!")
 logger.info("Pipeline completed successfully!")

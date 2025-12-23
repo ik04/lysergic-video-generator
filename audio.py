@@ -7,7 +7,7 @@ import re
 import logging
 import string
 import sys
-from urllib.parse import unquote
+from urllib.parse import unquote, quote
 from collections import Counter
 import os
 
@@ -27,6 +27,15 @@ load_dotenv()
 # -------------------------
 TEMP_DIR = "temp"
 os.makedirs(TEMP_DIR, exist_ok=True)
+
+# -------------------------
+# Env
+# -------------------------
+LYSERGIC_API = os.getenv("LYSERGIC_API", "https://lysergic.kaizenklass.xyz")
+LYSERGIC_FRONTEND = os.getenv(
+    "LYSERGIC_FRONTEND",
+    "https://lysergic.vercel.app"
+)
 
 # -------------------------
 # Helpers
@@ -122,7 +131,7 @@ if len(sys.argv) > 1:
 # Fetch random experience if no URL
 # -------------------------
 if not experience_url:
-    url = "https://lysergic.kaizenklass.xyz/api/v1/erowid/random/experience?size_per_substance=1"
+    url = f"{LYSERGIC_API}/api/v1/erowid/random/experience?size_per_substance=1"
     substances = {
         "urls": [
             "https://www.erowid.org/chemicals/dmt/dmt.shtml",
@@ -142,7 +151,7 @@ if not experience_url:
 # Fetch experience details
 # -------------------------
 resp = requests.post(
-    "https://lysergic.kaizenklass.xyz/api/v1/erowid/experience",
+    f"{LYSERGIC_API}/api/v1/erowid/experience",
     json={"url": experience_url}
 )
 data = resp.json()["data"]
@@ -255,6 +264,17 @@ with open(subtitle_filename, "w", encoding="utf-8") as f:
     f.write("\n".join(subtitles))
 
 # -------------------------
+# Frontend experience link
+# -------------------------
+encoded_url = quote(experience_url, safe="")
+frontend_link = (
+    f"{LYSERGIC_FRONTEND}/experience/view?url={encoded_url}"
+)
+
+# -------------------------
 # Output for pipeline
 # -------------------------
-print(f"{audio_filename}|{subtitle_filename}|{primary_substance}")
+print(
+    f"{audio_filename}|{subtitle_filename}|"
+    f"{primary_substance}|{frontend_link}"
+)

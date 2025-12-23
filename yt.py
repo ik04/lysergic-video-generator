@@ -8,7 +8,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from dotenv import load_dotenv
 
-
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,18 +24,15 @@ TOKEN_FILE = "youtube_token.json"
 def get_youtube():
     creds = None
 
-    # Load existing token
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
 
-    # Refresh token if expired
     if creds and creds.expired and creds.refresh_token:
         logger.info("Refreshing YouTube access token")
         creds.refresh(Request())
         with open(TOKEN_FILE, "w") as f:
             f.write(creds.to_json())
 
-    # Full re-auth only if needed
     if not creds or not creds.valid:
         logger.info("Starting browser authentication flow")
         flow = InstalledAppFlow.from_client_secrets_file(
@@ -49,21 +46,36 @@ def get_youtube():
     return build("youtube", "v3", credentials=creds)
 
 
-def upload_video(video_path, title, playlist_id=None):
+def build_description(experience_url: str | None):
+    description = (
+        "Narrated psychoactive experience report.\n\n"
+        "Source: Erowid.org\n"
+        "Educational & harm reduction purposes only.\n\n"
+    )
+
+    if experience_url:
+        description += (
+            "Read the full experience:\n"
+            f"{experience_url}\n\n"
+        )
+
+    description += (
+        "Generated using The Lysergic Dream Engine:\n"
+        "https://github.com/ik04/lysergic-dream-engine\n\n"
+        "Explore more experiences:\n"
+        "https://lysergic.vercel.app/"
+    )
+
+    return description
+
+
+def upload_video(video_path, title, playlist_id=None, experience_url=None):
     youtube = get_youtube()
 
     body = {
         "snippet": {
             "title": title,
-            "description": (
-                "Narrated psychoactive experience report.\n\n"
-                "Source: Erowid.org\n"
-                "Educational & harm reduction purposes only.\n\n"
-                "Generated using The Lysergic Dream Engine:\n"
-                "https://github.com/ik04/lysergic-dream-engine\n\n"
-                "Explore more experiences:\n"
-                "https://lysergic.vercel.app/"
-            ),
+            "description": build_description(experience_url),
             "tags": [
                 "trip report",
                 "psychedelic experience",
@@ -72,7 +84,9 @@ def upload_video(video_path, title, playlist_id=None):
                 "dmt",
                 "salvia",
                 "cannabis",
-                "mdma"
+                "mdma",
+                "ketamine",
+                "cocaine"
             ],
             "categoryId": "22",
         },
@@ -122,12 +136,15 @@ def upload_video(video_path, title, playlist_id=None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python yt.py <video.mp4> [playlist_id] [substance]")
+        print(
+            "Usage: python yt.py <video.mp4> [playlist_id] [substance] [experience_url]"
+        )
         sys.exit(1)
 
     video_file = sys.argv[1]
     playlist_id = sys.argv[2] if len(sys.argv) > 2 else None
     substance = sys.argv[3] if len(sys.argv) > 3 else None
+    experience_url = sys.argv[4] if len(sys.argv) > 4 else None
 
     base_name = os.path.basename(video_file)
     base_title = os.path.splitext(base_name)[0].replace("_", " ")
@@ -137,4 +154,9 @@ if __name__ == "__main__":
     else:
         title = base_title
 
-    upload_video(video_file, title, playlist_id)
+    upload_video(
+        video_file,
+        title,
+        playlist_id=playlist_id,
+        experience_url=experience_url
+    )

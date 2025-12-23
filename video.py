@@ -33,9 +33,28 @@ random_clip_index = random.randint(1, 5)
 music_file = f"music/{random_music_index}.mp3"
 clip_file = f"clips/{random_clip_index}.mp4"
 
-# Absolute font path + dir (CRITICAL)
+# -------------------------
+# Font (absolute path required)
+# -------------------------
 font_path = os.path.abspath("fonts/PressStart2P-Regular.ttf")
 fonts_dir = os.path.dirname(font_path)
+
+# -------------------------
+# Subtitle color per clip
+# ASS format: &HBBGGRR&
+# -------------------------
+SUBTITLE_COLOR_MAP = {
+    1: "&HFF83D1&",  # neon pink
+    2: "&H4ADFFF&",  # cyan blue
+    3: "&HE042E5&",  # purple-magenta
+    4: "&H7CFF4A&",  # acid green
+    5: "&HFFD84A&",  # warm amber
+}
+
+subtitle_color = SUBTITLE_COLOR_MAP.get(
+    random_clip_index,
+    "&HFFFFFF&"  # fallback
+)
 
 output_folder = "output"
 os.makedirs(output_folder, exist_ok=True)
@@ -122,12 +141,16 @@ tts_clip.close()
 music_clip.close()
 
 # -------------------------
-# Burn subtitles with FFmpeg (Press Start 2P)
+# Burn subtitles with FFmpeg
 # -------------------------
 if os.path.exists(subtitle_file):
     clean_srt(subtitle_file)
 
-    logger.info("Burning subtitles using Press Start 2P")
+    logger.info(
+        "Burning subtitles | clip=%s | color=%s",
+        random_clip_index,
+        subtitle_color
+    )
 
     subtitle_filter = (
         f"subtitles='{subtitle_file}':"
@@ -135,13 +158,11 @@ if os.path.exists(subtitle_file):
         f"force_style="
         f"'FontName=Press Start 2P,"
         f"FontSize=12,"
-        f"PrimaryColour=&He042e5&,"
-        f"OutlineColour=&HFFDF4A&,"
+        f"PrimaryColour={subtitle_color},"
         f"Outline=0,"
         f"Shadow=0,"
         f"Alignment=2'"
     )
-
 
     ffmpeg_cmd = [
         "ffmpeg",

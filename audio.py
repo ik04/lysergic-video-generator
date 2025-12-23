@@ -9,6 +9,7 @@ import string
 import sys
 from urllib.parse import unquote
 from collections import Counter
+import os
 
 # -------------------------
 # Logging setup
@@ -20,6 +21,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+# -------------------------
+# Paths
+# -------------------------
+TEMP_DIR = "temp"
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # -------------------------
 # Helpers
@@ -35,10 +42,6 @@ def sanitize_filename(name: str) -> str:
     return "".join(c for c in name if c in valid_chars).replace(" ", "_")
 
 def split_with_punctuation(text: str):
-    """
-    Returns list of (text, pause_seconds)
-    Breathing toned down
-    """
     parts = re.findall(r'[^.,!?;:]+[.,!?;:]?', text)
     result = []
 
@@ -84,13 +87,11 @@ def detect_primary_substance(content: str, doses: list) -> str:
     counts = Counter()
     text_lower = content.lower()
 
-    # Count mentions in content
     for substance in SUBSTANCES:
         matches = re.findall(rf"\b{substance.lower()}\b", text_lower)
         if matches:
             counts[substance] += len(matches)
 
-    # Count substances from doses (weighted)
     dose_substances = []
     for d in doses:
         sub = d.get("substance")
@@ -102,12 +103,9 @@ def detect_primary_substance(content: str, doses: list) -> str:
     unique_substances = set(dose_substances)
 
     if len(unique_substances) == 1:
-        only = unique_substances.pop()
-        logger.info("Single substance detected from doses: %s", only)
-        return only
+        return unique_substances.pop()
 
     if counts:
-        logger.info("Substance frequency (content + doses): %s", dict(counts))
         return counts.most_common(1)[0][0]
 
     return "Unknown"
@@ -124,7 +122,6 @@ if len(sys.argv) > 1:
 # Fetch random experience if no URL
 # -------------------------
 if not experience_url:
-    logger.info("Fetching random Erowid experience")
     url = "https://lysergic.kaizenklass.xyz/api/v1/erowid/random/experience?size_per_substance=1"
     substances = {
         "urls": [
@@ -144,7 +141,6 @@ if not experience_url:
 # -------------------------
 # Fetch experience details
 # -------------------------
-logger.info("Fetching full experience details")
 resp = requests.post(
     "https://lysergic.kaizenklass.xyz/api/v1/erowid/experience",
     json={"url": experience_url}
@@ -160,12 +156,6 @@ clean_experience = {
     "doses": data.get("doses", []),
 }
 
-logger.info(
-    "Loaded experience: '%s' by %s",
-    clean_experience["title"],
-    clean_experience["username"],
-)
-
 # -------------------------
 # Detect primary substance
 # -------------------------
@@ -173,7 +163,6 @@ primary_substance = detect_primary_substance(
     clean_experience["content"],
     clean_experience["doses"]
 )
-logger.info("Primary substance detected: %s", primary_substance)
 
 # -------------------------
 # Build narration script
@@ -184,14 +173,11 @@ Welcome.
 This is a narrated experience report sourced from Erowid dot org,
 generated using The Lysergic Dream Engine.
 
-This video is not an endorsement, not medical advice,
-and does not encourage illegal activity.
-
 Listener discretion is advised.
 
 {clean_experience['title']}.
 
-{("an" if primary_substance in ["LSD", "MDMA"] else "a")} {primary_substance} Trip Report.
+A {primary_substance} Trip Report.
 
 This experience was submitted under the username
 {clean_experience['username']}.
@@ -201,8 +187,6 @@ Reported gender: {clean_experience['gender']}.
 
 {clean_experience['content']}
 
-I hope you found this experience report informative and enjoyable.
-
 Thank you for listening.
 """
 
@@ -211,7 +195,6 @@ segments = split_with_punctuation(normalize_text(tts_script))
 # -------------------------
 # Load TTS
 # -------------------------
-logger.info("Loading Coqui TTS model")
 tts = TTS(
     model_name="tts_models/en/vctk/vits",
     progress_bar=False,
@@ -233,12 +216,9 @@ subtitle_index = 1
 for text, pause in segments:
     normalized = normalize_text(text).lower()
     if normalized == last_spoken:
-        logger.warning("Skipping duplicate segment: %s", text[:60])
         continue
 
     last_spoken = normalized
-    logger.info("Speaking: %s", text[:60])
-
     wav = tts.tts(text=text, speaker=speaker)
     duration = len(wav) / sr
 
@@ -253,7 +233,6 @@ for text, pause in segments:
 
     subtitle_index += 1
     current_time = end
-
     audio_parts.append(wav)
 
     if pause > 0:
@@ -263,19 +242,17 @@ for text, pause in segments:
 final_audio = np.concatenate(audio_parts)
 
 # -------------------------
-# Save outputs
+# Save outputs (TEMP)
 # -------------------------
 base_filename = sanitize_filename(clean_experience["title"])
-audio_filename = f"{base_filename}.wav"
-subtitle_filename = f"{base_filename}.srt"
+
+audio_filename = os.path.join(TEMP_DIR, f"{base_filename}.wav")
+subtitle_filename = os.path.join(TEMP_DIR, f"{base_filename}.srt")
 
 sf.write(audio_filename, final_audio, sr)
 
 with open(subtitle_filename, "w", encoding="utf-8") as f:
     f.write("\n".join(subtitles))
-
-logger.info("Saved audio as %s", audio_filename)
-logger.info("Saved subtitles as %s", subtitle_filename)
 
 # -------------------------
 # Output for pipeline

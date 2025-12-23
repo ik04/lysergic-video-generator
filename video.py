@@ -12,6 +12,9 @@ from moviepy.editor import (
 )
 from moviepy.audio.fx.all import volumex, audio_loop
 
+# -------------------------
+# Logging
+# -------------------------
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -25,8 +28,12 @@ if len(sys.argv) < 2:
 tts_audio_file = sys.argv[1]
 base_name = os.path.splitext(os.path.basename(tts_audio_file))[0]
 
-subtitle_file = f"{base_name}.srt"
+# SRT lives next to wav (temp/)
+subtitle_file = os.path.splitext(tts_audio_file)[0] + ".srt"
 
+# -------------------------
+# Random assets
+# -------------------------
 random_music_index = random.randint(1, 7)
 random_clip_index = random.randint(1, 5)
 
@@ -34,14 +41,13 @@ music_file = f"music/{random_music_index}.mp3"
 clip_file = f"clips/{random_clip_index}.mp4"
 
 # -------------------------
-# Font (absolute path required)
+# Fonts (absolute paths required)
 # -------------------------
 font_path = os.path.abspath("fonts/PressStart2P-Regular.ttf")
 fonts_dir = os.path.dirname(font_path)
 
 # -------------------------
-# Subtitle color per clip
-# ASS format: &HBBGGRR&
+# Subtitle colors per clip (ASS: &HBBGGRR&)
 # -------------------------
 SUBTITLE_COLOR_MAP = {
     1: "&HFF83D1&",  # neon pink
@@ -53,14 +59,20 @@ SUBTITLE_COLOR_MAP = {
 
 subtitle_color = SUBTITLE_COLOR_MAP.get(
     random_clip_index,
-    "&HFFFFFF&"  # fallback
+    "&HFFFFFF&"
 )
 
-output_folder = "output"
-os.makedirs(output_folder, exist_ok=True)
+# -------------------------
+# Folders
+# -------------------------
+TEMP_DIR = "temp"
+OUTPUT_DIR = "output"
 
-temp_video = os.path.join(output_folder, f"{base_name}_nosubs.mp4")
-output_file = os.path.join(output_folder, f"{base_name}.mp4")
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+temp_video = os.path.join(TEMP_DIR, f"{base_name}_nosubs.mp4")
+output_file = os.path.join(OUTPUT_DIR, f"{base_name}.mp4")
 
 # -------------------------
 # Clean SRT (punctuation + spacing only)
@@ -125,7 +137,7 @@ combined_audio = CompositeAudioClip([music_clip, tts_clip])
 video_clip = video_clip.set_audio(combined_audio)
 
 # -------------------------
-# Export without subtitles
+# Export base video (NO subtitles)
 # -------------------------
 logger.info("Rendering base video (no subtitles)")
 video_clip.write_videofile(
@@ -134,6 +146,7 @@ video_clip.write_videofile(
     audio_codec="aac",
     preset="medium",
     threads=4,
+    logger=None
 )
 
 video_clip.close()
@@ -177,18 +190,21 @@ if os.path.exists(subtitle_file):
 
     os.remove(temp_video)
     os.remove(subtitle_file)
-    logger.info("Removed subtitle file: %s", subtitle_file)
+    logger.info("Removed temp subtitle: %s", subtitle_file)
 
 else:
     logger.warning("No subtitles found, skipping burn-in")
     os.rename(temp_video, output_file)
 
 # -------------------------
-# Cleanup
+# Cleanup temp audio
 # -------------------------
 if os.path.exists(tts_audio_file):
     os.remove(tts_audio_file)
-    logger.info("Removed temporary audio file: %s", tts_audio_file)
+    logger.info("Removed temp audio: %s", tts_audio_file)
 
+# -------------------------
+# Done
+# -------------------------
 logger.info("Final video ready: %s", output_file)
 print(output_file)
